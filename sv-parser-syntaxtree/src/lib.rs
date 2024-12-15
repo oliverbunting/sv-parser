@@ -39,10 +39,19 @@ pub struct Locate {
     pub offset: usize,
     pub line: u32,
     pub len: usize,
+    #[cfg(feature = "quickcheck")]
+    pub val: test::ImmutableString,
 }
 
 impl Locate {
     pub fn str<'a, 'b>(&'a self, s: &'b str) -> &'b str {
+        #[cfg(feature = "quickcheck")]
+        {
+            if self.val.len() > 0 {
+                return unsafe { std::mem::transmute::<&'a str, &'b str>(&self.val) }
+            }
+        }
+
         &s[self.offset..self.offset + self.len]
     }
 }
@@ -67,4 +76,90 @@ impl<'a> IntoIterator for &'a Locate {
         let nodes: RefNodes = self.into();
         Iter { next: nodes }
     }
+}
+
+// -----------------------------------------------------------------------------
+
+#[cfg(feature = "quickcheck")]
+mod test {
+    use std::{
+        ops::Deref,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+ 
+    #[derive(Copy)]
+    pub struct ImmutableString {
+        ptr: *mut u8,
+        len: usize,
+        capacity: usize,
+        count: *mut usize,
+    }
+
+    impl From<&str> for ImmutableString {
+        fn from(s: &str) -> Self {
+            let mut x = s.to_owned();
+            let s: ImmutableString = Self {
+                ptr: x.as_mut_ptr(),
+                len: x.len(),
+                capacity: x.capacity(),
+                count: Box::into_raw(Box::new(1)),
+            };
+            std::mem::forget(x);
+            s
+        }
+    }
+
+    impl Deref for ImmutableString {
+        type Target = str;
+        fn deref(&self) -> &Self::Target {
+            unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(self.ptr, self.len)) }
+        }
+    }
+
+    impl std::fmt::Debug for ImmutableString {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let x: &str = self;
+            x.fmt(f)
+        }
+    }
+
+    impl PartialEq for ImmutableString {
+        fn eq(&self, other: &Self) -> bool {
+            let x: &str = self;
+            let y: &str = other;
+            x == y
+        }
+    }
+
+    impl Clone for ImmutableString {
+        fn clone(&self) -> Self {
+            let count = unsafe { AtomicUsize::from_ptr(self.count) };
+            count.fetch_add(1, Ordering::Relaxed);
+            Self {
+                ptr: self.ptr,
+                len: self.len,
+                capacity: self.capacity,
+                count: self.count,
+            }
+        }
+    }
+
+    impl std::default::Default for ImmutableString {
+        fn default() -> Self {
+            Self::from("")
+        }
+    }
+
+    // impl Drop for ImmutableString {
+    //     fn drop(&mut self) {
+    //         let count = unsafe{AtomicUsize::from_ptr(self.count)};
+    //         if count.fetch_sub(1, Ordering::Relaxed) == 0 {
+    //             unsafe {
+    //                 drop(String::from_raw_parts(self.ptr, self.len, self.capacity));
+    //                 drop(Box::from_raw(self.count));
+    //             }
+
+    //         }
+    //     }
+    // }
 }

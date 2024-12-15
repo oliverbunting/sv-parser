@@ -88,7 +88,7 @@ fn impl_node(ast: &DeriveInput) -> TokenStream {
                     match x {
                         RefNode::Locate(x) => if let Some(loc) = locate {
                             assert_eq!(x.offset, loc.offset + loc.len);
-                            locate = Some(Locate { offset: loc.offset, line: loc.line, len: loc.len + x.len });
+                            locate = Some(Locate { offset: loc.offset, line: loc.line, len: loc.len + x.len, ..std::default::Default::default() });
                         } else {
                             locate = Some(*x);
                         },

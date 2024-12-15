@@ -450,5 +450,6 @@ pub(crate) fn into_locate(s: Span) -> Locate {
         offset: s.location_offset(),
         line: s.location_line(),
         len: s.fragment().len(),
+        ..std::default::Default::default()
     }
 }

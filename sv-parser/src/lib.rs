@@ -1,7 +1,7 @@
 #![recursion_limit = "256"]
 
 use nom_greedyerror::error_position;
-use std::fmt;
+use std::{fmt, io};
 use std::hash::BuildHasher;
 use std::path::{Path, PathBuf};
 pub use sv_parser_error::Error;
@@ -19,6 +19,17 @@ pub struct SyntaxTree {
 }
 
 impl SyntaxTree {
+    
+    /// Write the syntax tree to the specified writer
+    pub fn write_to<'a, W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
+        for n in self {
+            if let RefNode::Locate(x) = n {
+                writer.write_all(x.str(self.text.text()).as_bytes())?;
+            }
+        }
+        Ok(())
+    }
+
     /// Get `&str` from the specified node
     pub fn get_str<'a, T: Into<RefNodes<'a>>>(&self, nodes: T) -> Option<&str> {
         let mut beg = None;
@@ -379,6 +390,16 @@ mod test {
             parse_sv_str(src, PathBuf::from(""), &HashMap::new(), &[""], false, false).unwrap();
         let comment = unwrap_node!(&syntax_tree, Comment);
         assert!(comment.is_some());
+    }
+
+    #[test]
+    fn test_round_trip() {
+        let src = "/* comment */";
+        let (syntax_tree, _) =
+            parse_sv_str(src, PathBuf::from(""), &HashMap::new(), &[""], false, false).unwrap();
+        let mut dst = String::new();
+        syntax_tree.write_to(unsafe{ dst.as_mut_vec() }).unwrap();
+        assert_eq!(src, &dst);
     }
 
     #[test]
